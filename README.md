@@ -5,7 +5,7 @@ Simple chat application with a server and multiple clients
 ## Dependencies
 
 ```
-$ pip install websockets
+$ pip install -r requirements.txt 
 ```
 
 ## Running
