@@ -1,8 +1,7 @@
 import asyncio
-import json
+import events
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from websockets.client import connect, WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
@@ -13,7 +12,7 @@ async def async_input(prompt: str = ""):
 
 
 async def sender(websocket: WebSocketClientProtocol, username):
-    await websocket.send(json.dumps({"type": "user_join", "username": username}))
+    await websocket.send(events.UserJoin(username).as_json())
     while True:
         try:
             message = ""
@@ -21,26 +20,21 @@ async def sender(websocket: WebSocketClientProtocol, username):
                 message = await async_input()
         except KeyboardInterrupt:
             return
-        await websocket.send(
-            json.dumps({"type": "send_message", "username": username, "content": message})
-        )
+        await websocket.send(events.Message(username, message).as_json())
 
 
 async def receiver(websocket: WebSocketClientProtocol):
     try:
         async for message in websocket:
-            data = json.loads(message)
-            if data["type"] == "receive_message":
-                time = datetime.fromtimestamp(data["time"]).strftime("%H:%M")
-                print(f'{time} | {data["username"]}: {data["content"]}')
+            event = events.parse_json(message)
+            if isinstance(event, events.Message):
+                print(f"{event.pretty_timestamp()} | {event.username}: {event.content}")
 
-            elif data["type"] == "user_join":
-                time = datetime.fromtimestamp(data["time"]).strftime("%H:%M")
-                print(f'{time} | --- {data["username"]} joined the room ---')
+            elif isinstance(event, events.UserJoin):
+                print(f"{event.pretty_timestamp()} | --- {event.username} joined the room ---")
 
-            elif data["type"] == "user_left":
-                time = datetime.fromtimestamp(data["time"]).strftime("%H:%M")
-                print(f'{time} | --- {data["username"]} left the room ---')
+            elif isinstance(event, events.UserLeft):
+                print(f"{event.pretty_timestamp()} | --- {event.username} left the room ---")
 
     except ConnectionClosedError:
         print("[server disconnected]")

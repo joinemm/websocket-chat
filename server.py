@@ -1,11 +1,13 @@
 import asyncio
-from time import time
 
 from websockets.server import serve, WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosed
 import json
 
+import events
+
 clients = set()
+users = set()
 
 
 async def send(websocket, message):
@@ -16,36 +18,30 @@ async def send(websocket, message):
         pass
 
 
-def broadcast(message):
-    for _, websocket in clients:
-        asyncio.create_task(send(websocket, message))
+def broadcast(message: events.SocketEvent):
+    for websocket in clients:
+        asyncio.create_task(send(websocket, message.as_json()))
 
 
 async def handler(websocket: WebSocketServerProtocol):
+    clients.add(websocket)
     try:
         async for message in websocket:
             print("RECV <<<", message)
             data = json.loads(message)
-            if data["type"] == "send_message":
+            if data["type"] == "message":
                 username = data["username"]
                 content = data["content"]
-                broadcast(
-                    json.dumps(
-                        {
-                            "type": "receive_message",
-                            "time": time(),
-                            "username": username,
-                            "content": content,
-                        }
-                    )
-                )
+                broadcast(events.Message(username, content))
+
             elif data["type"] == "user_join":
                 username = data["username"]
-                broadcast(json.dumps({"type": "user_join", "time": time(), "username": username}))
-                clients.add((username, websocket))
+                broadcast(events.UserJoin(username))
+                users.add(username)
     finally:
-        clients.remove((username, websocket))
-        broadcast(json.dumps({"type": "user_left", "time": time(), "username": username}))
+        clients.remove(websocket)
+        users.remove(username)
+        broadcast(events.UserLeft(username))
 
 
 async def main():
